@@ -22,6 +22,8 @@
 /* _GNU_SOURCE is required to use struct ucred in glibc 2.8 */
 #define _GNU_SOURCE
 #include "unix-java.h"
+#include "jni.h"
+#include "linux/jni_md.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -64,65 +66,6 @@ void handleerrno(JNIEnv *env)
 }
 
 /*
- * Class:     cx_ath_matthew_unix_UnixServerSocket
- * Method:    native_bind
- * Signature: (Ljava/lang/String;)I
- */
-JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_UnixServerSocket_native_1bind
-  (JNIEnv *env, jobject o, jstring address, jboolean abstract)
-{
-   int sock = socket(PF_UNIX, SOCK_STREAM, 0);
-   if (-1 == sock) { handleerrno(env); return -1; }
-   const char* caddr = (*env)->GetStringUTFChars(env, address, 0);
-   int slen = (*env)->GetStringUTFLength(env, address)+1;
-   struct sockaddr_un *sad = malloc(sizeof(sa_family_t)+slen);
-   if (abstract)  {
-      char* shifted = sad->sun_path+1;
-      strncpy(shifted, caddr, slen-1);
-      sad->sun_path[0] = 0;
-   } else
-      strncpy(sad->sun_path, caddr, slen);
-   (*env)->ReleaseStringUTFChars(env, address, caddr);
-   sad->sun_family = AF_UNIX;
-   int rv = bind(sock, (const  struct  sockaddr*) sad, sizeof(sa_family_t)+slen);
-   free(sad);
-   if (-1 == rv) { handleerrno(env); return -1; }
-   rv = listen(sock, 10);
-   if (-1 == rv) { handleerrno(env); return -1; }
-   return sock;
-}
-
-/*
- * Class:     cx_ath_matthew_unix_UnixServerSocket
- * Method:    native_close
- * Signature: (I)V
- */
-JNIEXPORT void JNICALL Java_cx_ath_matthew_unix_UnixServerSocket_native_1close
-  (JNIEnv * env, jobject o, jint sock)
-{
-   if (0 == sock) return;
-   int rv = shutdown(sock, SHUT_RDWR);
-   if (-1 == rv) { handleerrno(env); }
-   else {
-      rv = close(sock);
-      if (-1 == rv) { handleerrno(env); }
-   }
-}
-
-/*
- * Class:     cx_ath_matthew_unix_UnixServerSocket
- * Method:    native_accept
- * Signature: (I)I
- */
-JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_UnixServerSocket_native_1accept
-  (JNIEnv * env, jobject o, jint sock)
-{
-   int newsock = accept(sock, NULL, NULL);
-   if (-1 == newsock) handleerrno(env);
-   return newsock;
-}
-
-/*
  * Class:     cx_ath_matthew_unix_UnixSocket
  * Method:    native_set_pass_cred
  * Signature: (IZ)V
@@ -135,82 +78,6 @@ JNIEXPORT void JNICALL Java_cx_ath_matthew_unix_UnixSocket_native_1set_1pass_1cr
    int rv = setsockopt(sock, SOL_SOCKET, SO_PASSCRED, &opt, sizeof(int));
    if (-1 == rv) { handleerrno(env);}
 #endif
-}
-
-/*
- * Class:     cx_ath_matthew_unix_UnixSocket
- * Method:    native_connect
- * Signature: (Ljava/lang/String;)I
- */
-JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_UnixSocket_native_1connect
-  (JNIEnv *env, jobject o, jstring address, jboolean abstract)
-{
-   int sock = socket(PF_UNIX, SOCK_STREAM, 0);
-   if (-1 == sock) { handleerrno(env); return -1; }
-   const char* caddr = (*env)->GetStringUTFChars(env, address, 0);
-   int slen = (*env)->GetStringUTFLength(env, address)+1;
-   struct sockaddr_un *sad = malloc(sizeof(sa_family_t)+slen);
-   if (abstract)  {
-      char* shifted = sad->sun_path+1;
-      strncpy(shifted, caddr, slen-1);
-      sad->sun_path[0] = 0;
-   } else
-      strncpy(sad->sun_path, caddr, slen);
-   (*env)->ReleaseStringUTFChars(env, address, caddr);
-   sad->sun_family = AF_UNIX;
-   int rv = connect(sock, (const struct sockaddr*) sad, sizeof(sa_family_t)+slen);
-   free(sad);
-   if (-1 == rv) { handleerrno(env); return -1; }
-   return sock;
-}
-
-/*
- * Class:     cx_ath_matthew_unix_UnixSocket
- * Method:    native_close
- * Signature: (I)V
- */
-JNIEXPORT void JNICALL Java_cx_ath_matthew_unix_UnixSocket_native_1close
-  (JNIEnv *env, jobject o, jint sock)
-{
-   if (0 == sock) return;
-   int rv = shutdown(sock, SHUT_RDWR);
-   if (-1 == rv) { handleerrno(env); }
-   else {
-      rv = close(sock);
-      if (-1 == rv) { handleerrno(env); }
-   }
-}
-
-/*
- * Class:     cx_ath_matthew_unix_USInputStream
- * Method:    native_recv
- * Signature: ([BII)I
- */
-JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_USInputStream_native_1recv
-  (JNIEnv *env, jobject o, jint sock, jbyteArray buf, jint offs, jint len, jint flags, jint timeout)
-{
-   fd_set rfds;
-   struct timeval tv;
-   jbyte* cbuf = (*env)->GetByteArrayElements(env, buf, NULL);
-   void* recvb = cbuf + offs;
-   int rv;
-
-   if (timeout > 0) {
-      FD_ZERO(&rfds);
-      FD_SET(sock, &rfds);
-      tv.tv_sec = 0;
-      tv.tv_usec = timeout;
-      rv = select(sock+1, &rfds, NULL, NULL, &tv);
-      rv = recv(sock, recvb, len, flags);
-      if (-1 == rv) { handleerrno(env); rv = -1; }
-      (*env)->ReleaseByteArrayElements(env, buf, cbuf, 0);
-      return rv;
-   } else  {
-      rv = recv(sock, recvb, len, flags);
-      (*env)->ReleaseByteArrayElements(env, buf, cbuf, 0);
-      if (-1 == rv) { handleerrno(env); return -1; }
-      return rv;
-   }
 }
 
 /*
@@ -294,69 +161,6 @@ JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_USOutputStream_native_1send__I_3
 
 /*
  * Class:     cx_ath_matthew_unix_UnixSocket
- * Method:    native_getPID
- * Signature: (I)I
- */
-JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_UnixSocket_native_1getPID
-  (JNIEnv * env, jobject o, jint sock)
-{
-#ifdef SO_PEERCRED
-   struct ucred cr;
-   socklen_t cl=sizeof(cr);
-
-   if (getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &cr, &cl)==0)
-      return cr.pid;
-   else
-      return -1;
-#else
-   return -1;
-#endif
-}
-
-/*
- * Class:     cx_ath_matthew_unix_UnixSocket
- * Method:    native_getUID
- * Signature: (I)I
- */
-JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_UnixSocket_native_1getUID
-  (JNIEnv * env, jobject o, jint sock)
-{
-#ifdef SO_PEERCRED
-   struct ucred cr;
-   socklen_t cl=sizeof(cr);
-
-   if (getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &cr, &cl)==0)
-      return cr.uid;
-   else
-      return -1;
-#else
-   return -1;
-#endif
-}
-
-/*
- * Class:     cx_ath_matthew_unix_UnixSocket
- * Method:    native_getGID
- * Signature: (I)I
- */
-JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_UnixSocket_native_1getGID
-  (JNIEnv * env, jobject o, jint sock)
-{
-#ifdef SO_PEERCRED
-   struct ucred cr;
-   socklen_t cl=sizeof(cr);
-
-   if (getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &cr, &cl)==0)
-      return cr.gid;
-   else
-      return -1;
-#else
-   return -1;
-#endif
-}
-
-/*
- * Class:     cx_ath_matthew_unix_UnixSocket
  * Method:    native_send_creds
  * Signature: (B)V
  */
@@ -396,60 +200,6 @@ JNIEXPORT void JNICALL Java_cx_ath_matthew_unix_UnixSocket_native_1send_1creds
    int rv = sendmsg(sock, &msg, 0);
    if (-1 == rv) { handleerrno(env); }
 }
-
-/*
- * Class:     cx_ath_matthew_unix_UnixSocket
- * Method:    native_recv_creds
- * Signature: ([I)B
- */
-JNIEXPORT jbyte JNICALL Java_cx_ath_matthew_unix_UnixSocket_native_1recv_1creds
-  (JNIEnv *env, jobject o, jint sock, jintArray jcreds)
-{
-   struct msghdr msg;
-   char iov_buf = 0;
-   struct iovec iov;
-   msg.msg_name = NULL;
-   msg.msg_namelen = 0;
-   msg.msg_flags = 0;
-   msg.msg_iov = &iov;
-   msg.msg_iovlen = 1;
-   msg.msg_control = NULL;
-   msg.msg_controllen = 0;
-   iov.iov_base = &iov_buf;
-   iov.iov_len = 1;
-
-#ifdef SCM_CREDENTIALS
-   char buf[CMSG_SPACE(sizeof(struct ucred))];
-   msg.msg_control = buf;
-   msg.msg_controllen = sizeof buf;
-   struct cmsghdr *cmsg;
-   struct ucred *creds = NULL;
-#endif
-
-   recvmsg(sock, &msg, 0);
-
-#ifdef SCM_CREDENTIALS
-   for (cmsg = CMSG_FIRSTHDR(&msg);
-         cmsg != NULL;
-         cmsg = CMSG_NXTHDR(&msg,cmsg)) {
-      if (cmsg->cmsg_level == SOL_SOCKET
-            && cmsg->cmsg_type == SCM_CREDENTIALS) {
-         creds = (struct ucred *) CMSG_DATA(cmsg);
-         break;
-      }
-   }
-   if (NULL != creds) {
-      jint cred_array[3];
-      cred_array[0] = creds->pid;
-      cred_array[1] = creds->uid;
-      cred_array[2] = creds->gid;
-      (*env)->SetIntArrayRegion(env, jcreds, 0, 3, &cred_array[0]);
-   }
-#endif
-
-   return iov_buf;
-}
-
 
 #ifdef __cplusplus
 }
