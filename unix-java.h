@@ -56,6 +56,13 @@ extern "C" {
 }
 #endif
 #endif
+/*
+ * Class:     cx_ath_matthew_unix_USInputStream
+ * Method:    native_recv
+ * Signature: (I[BIIII)I
+ */
+JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_USInputStream_native_1recv
+        (JNIEnv *, jobject, jint, jbyteArray, jint, jint, jint, jint);
 /* Header for class cx_ath_matthew_unix_USOutputStream */
 
 #ifndef _Included_cx_ath_matthew_unix_USOutputStream

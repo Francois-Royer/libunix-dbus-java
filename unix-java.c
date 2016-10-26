@@ -81,6 +81,38 @@ JNIEXPORT void JNICALL Java_cx_ath_matthew_unix_UnixSocket_native_1set_1pass_1cr
 }
 
 /*
+ * Class:     cx_ath_matthew_unix_USInputStream
+ * Method:    native_recv
+ * Signature: ([BII)I
+ */
+JNIEXPORT jint JNICALL Java_cx_ath_matthew_unix_USInputStream_native_1recv
+        (JNIEnv *env, jobject o, jint sock, jbyteArray buf, jint offs, jint len, jint flags, jint timeout)
+{
+   fd_set rfds;
+   struct timeval tv;
+   jbyte* cbuf = (*env)->GetByteArrayElements(env, buf, NULL);
+   void* recvb = cbuf + offs;
+   int rv;
+
+   if (timeout > 0) {
+      FD_ZERO(&rfds);
+      FD_SET(sock, &rfds);
+      tv.tv_sec = 0;
+      tv.tv_usec = timeout;
+      rv = select(sock+1, &rfds, NULL, NULL, &tv);
+      rv = recv(sock, recvb, len, flags);
+      if (-1 == rv) { handleerrno(env); rv = -1; }
+      (*env)->ReleaseByteArrayElements(env, buf, cbuf, 0);
+      return rv;
+   } else  {
+      rv = recv(sock, recvb, len, flags);
+      (*env)->ReleaseByteArrayElements(env, buf, cbuf, 0);
+      if (-1 == rv) { handleerrno(env); return -1; }
+      return rv;
+   }
+}
+
+/*
  * Class:     cx_ath_matthew_unix_USOutputStream
  * Method:    native_send
  * Signature: (I[BII)I
